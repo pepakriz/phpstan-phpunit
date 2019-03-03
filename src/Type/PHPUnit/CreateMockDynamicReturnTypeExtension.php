@@ -6,10 +6,11 @@ use PhpParser\Node\Expr\MethodCall;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
 use PHPStan\Reflection\ParametersAcceptorSelector;
-use PHPStan\Type\Constant\ConstantStringType;
+use PHPStan\Type\NeverType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 use PHPStan\Type\TypeCombinator;
+use PHPStan\Type\TypeUtils;
 
 class CreateMockDynamicReturnTypeExtension implements \PHPStan\Type\DynamicMethodReturnTypeExtension
 {
@@ -42,14 +43,19 @@ class CreateMockDynamicReturnTypeExtension implements \PHPStan\Type\DynamicMetho
 			return $parametersAcceptor->getReturnType();
 		}
 		$argType = $scope->getType($methodCall->args[$argumentIndex]->value);
-		if (!$argType instanceof ConstantStringType) {
-			return $parametersAcceptor->getReturnType();
+
+		$resultTypes = [];
+		foreach (TypeUtils::getConstantStrings($argType) as $constantStringType) {
+			$resultTypes[] = new ObjectType($constantStringType->getValue());
+			$argType = TypeCombinator::remove($argType, $constantStringType);
 		}
 
-		$class = $argType->getValue();
+		if (!$argType instanceof NeverType) {
+			$resultTypes[] = $parametersAcceptor->getReturnType();
+		}
 
 		return TypeCombinator::intersect(
-			new ObjectType($class),
+			TypeCombinator::union(...$resultTypes),
 			$parametersAcceptor->getReturnType()
 		);
 	}

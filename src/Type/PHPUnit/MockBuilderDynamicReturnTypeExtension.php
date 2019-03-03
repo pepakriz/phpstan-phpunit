@@ -11,6 +11,7 @@ use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 use PHPStan\Type\TypeCombinator;
 use PHPStan\Type\TypeWithClassName;
+use PHPStan\Type\UnionType;
 
 class MockBuilderDynamicReturnTypeExtension implements \PHPStan\Type\DynamicMethodReturnTypeExtension, \PHPStan\Reflection\BrokerAwareExtension
 {
@@ -57,12 +58,22 @@ class MockBuilderDynamicReturnTypeExtension implements \PHPStan\Type\DynamicMeth
 
 		$parametersAcceptor = ParametersAcceptorSelector::selectSingle($methodReflection->getVariants());
 
-		if (!$calledOnType instanceof MockBuilderType) {
-			return $parametersAcceptor->getReturnType();
+		$calledOnTypes = $calledOnType instanceof UnionType
+			? $calledOnType->getTypes()
+			: [$calledOnType];
+
+		/** @var Type[] $returnTypes */
+		$returnTypes = [];
+		foreach ($calledOnTypes as $nestedCalledOnType) {
+			if (!$nestedCalledOnType instanceof MockBuilderType) {
+				return $parametersAcceptor->getReturnType();
+			}
+
+			$returnTypes[] = new ObjectType($nestedCalledOnType->getMockedClass());
 		}
 
-		return TypeCombinator::intersect(
-			new ObjectType($calledOnType->getMockedClass()),
+		return $returnTypes[] = TypeCombinator::intersect(
+			TypeCombinator::union(...$returnTypes),
 			$parametersAcceptor->getReturnType()
 		);
 	}
